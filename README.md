@@ -158,7 +158,86 @@ def saludo(
 ```
 De la misma forma, se puede declarar un nombre corto (una letra precedida por un solo guión), que tiene la ventaja de poder unirse con junto con otras nombres cortos de una sola letra. (Recuerdese el comando `$ ls -lah` en Linux).
 
+### CLI Opciones con Callbacks y Contexto
+Habrá veces que se quiera tratar o validar el valor de los argumentos bajo alguna lógica, antes de ser enviados a la función principal. Para eso, puede ser validados por otra función por medio de callback.
 
+```python
+def name_callback(value: str):
+    if value != "Alejandro":
+        raise typer.BadParameter("Sólo el nombre de Alejandro está permitido")
+    return value
+
+@app.command()
+def main(name: str = typer.Option(..., 
+                                  callback=name_callback)
+        ):
+    print(f"Hello {name}")
+```
+Lo que hace es que el valor es pasado a la función callback, es verificado, modificado y tratato. Y el valor que retorna el callback es el que finalmente captura la función principal.
+
+Al usar los callbacks, se generará un comportamiento no deseado al solicitar el "autocompletado" al presionar el tabulador. Internamente, el autocompletado envia ciertos datos para que se ejecute el programa y regrese las opciones disponibles. Pero al invocar el callback, se ejecutaran las funciones sin tener los argumentos completos, por lo que generará un error.
+
+Para solventarlo, se hace uso del objeto `typer.Context`. Este objeto tiene información adicional acerca de la ejecución del programa que servirá para que no se generen errores, ya que identifica cuando se utiliza el autocompletado o se ejecuta el programa.
+
+```python
+def name_callback(ctx: typer.Context, value: str):
+    if ctx.resilient_parsing:
+        return
+
+    if value != "Alejandro":
+        raise typer.BadParameter("Sólo el nombre de Alejandro está permitido")
+    return value
+```
+El objeto `typer.Context.resilient_parsing` es True cuando se maneja un autocompletado, por lo que retorna la función sin ejecutar el resto del código del callback. En cambio, su valor es False cuando se invoca como un programa normal, por lo que ignorará el primer return y ejecutará el resto del programa.
+
+Es casos especiales, tal vez quedrá saber que argumento es el que se está validando en el callback. En ese caso puedes declarar entre los argumentos del Callback el objeto `typer.CallbackParam`, el cual tendrá el atributo `typer.CallbackParam.name` que tendrá justamente el nombre del argumento desde el cual fue invocado dicho callback.
+
+Algunas veces, cuando en varios argumentos los pasamos por callback, su validación se hará según el orden en el que se pasen los parámetros en la invocación del programa principal. Habrá veces que quedremos que al levantarse alguna bandera, no importando el orden, se ejecute primero su callback. Para eso, dentro del objeto `typer.Option` se le agregará la opción `is_eager=True`, lo que indicará que siempre se debe ejecutar primero esa validación antes que todas las demás.
+
+Para sugerir las opciones validas utilizando el autocompletado con [TAB][TAB], se puede pasar un callback dentro de la opción `autocompletion=completion_names`. Este callback será invocado cuando se presione los tabuladores.
+
+### Formatos dentro del decorador @app.command
+
+Se puede agregar una descripción general de la app dentro de la opción de ayuda:
+```python
+app = typer.Typer(help="Awesome CLI user manager.")
+```
+
+Tambien se puede reescribir la ayuda de cada comando y no usar el docstring de la función, para mostrarlo en el --help.
+
+```python
+@app.command(help="Create a new user with USERNAME.")
+```
+
+Podemos de manera fácil y sencilla mostrar que se depreca algún comando de la siguente manera:
+
+```python
+@app.command(deprecated=True)
+```
+
+Podemos hacer que la ayuda se muestre con el formato de texto enriquecido de Rich, declarandolo desde el principio el instanciar la app:
+
+```python
+app = typer.Typer(rich_markup_mode="rich")
+```
+O podemos usar también el formato de Markdown:
+
+```python
+app = typer.Typer(rich_markup_mode="markdown")
+```
+
+Podemos agrupar los comandos en grupos que sean similares, para tener el texto de la ayuda más ordenado
+
+```python
+@app.command(rich_help_panel="Utils and Configs")
+```
+
+Al igual que se puede ordenar los comandos por grupos, también se pueden ordenar las argumentos o las opciones para ser mostrados en la ayuda, con la misma opción.
+
+Finalmente, se puede agregar un epilogo, mensaje final en la página de la ayuda, con la siguiente opción:
+```python
+@app.command(epilog="Made with :heart: in [blue]Venus[/blue]")
+```
 
 ## Referencias
 * Documentación oficial de [Typer](https://typer.tiangolo.com/)
