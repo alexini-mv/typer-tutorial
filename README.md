@@ -238,6 +238,232 @@ Finalmente, se puede agregar un epilogo, mensaje final en la página de la ayuda
 ```python
 @app.command(epilog="Made with :heart: in [blue]Venus[/blue]")
 ```
+### Personalizando el nombre del comando
+Se puede personalizar el nombre del comando, y que no tome el nombre de la función de python para asignarle el nombre al comando. Esto se hace pasandole un str posicional al decorador, de la siguiente forma:
+
+```python
+@app.command("create")
+def cli_create_user(username: str):
+```
+
+### Callback globales
+Se puede ejecutar un callback independientemente del comando o subcomando que se invoca. Para esto se puede invocar de dos formas diferentes, pero equivalentes.
+
+La primera es mediante el decorador `@app.callback()` de la siguiente forma:
+
+```python
+@app.callback()
+def main(verbose: bool):
+```
+La app registra que existe un callback global y se que siempre se ejecutará.    
+
+La otra forma es declarandolo directamente durante la instanciación del objeto Typer:
+
+```python
+def callback():
+    print("Algo bonito")
+
+app = typer.Typer(callback=callback)
+```
+Ambas formas son equivalentes.
+
+Si se pasa un callback al instanciar el objeto Typer, este puede ser sobreescrito después con el decorador `@app.callback()`.
+
+Normalmente se utiliza el callback para pasarle a la aplicación CLI un docstring que se desplegará durante la ayuda.
+
+```python
+def callback():
+    """Una asombrosa aplicación CLI."""
+
+app = typer.Typer(callback=callback)
+```
+
+### Tipos de Parámetros CLI
+Typer procurará parsear los parámetros al tipo de dato que se declara en python. Los tipos de datos validos para los parámetros pueden ser:
+
+1. **Números**
+```python
+def main(id: int = typer.Argument(..., min=0, max=1000),
+         rank: int = typer.Option(0, max=10, clamp=True),
+         score: float = typer.Option(0, min=0, max=100, clamp=True),
+):
+```
+A los tipos numéricos pueden recibir opciones para definir un rango máximo o mínimo validos, y levantar una excepción si se pasa un valor fuera del rango.
+
+Otra opción es usar `clamp=True` que hace que sí se da un valor numérico fuera del rango, ajustarlo al número más cercano dentro del rango, ya sea el máximo o el mínimo.
+
+2. **Booleanos**
+Como ya vimos anteriormente, al declarar un argumento del tipo booleano, nos genera dos banderas (--bandera, --no-bandera). Para evitar que nos genere las dos banderas, debemos de definir explicitamente el nombre de la bandera:
+
+```python
+def main(bandera: bool = typer.Option(False, "--bandera")):
+```
+
+Inclusive, si se quiere tener las dos banderas, se pueden personalizar ambas banderas al mismo tiempo para que tengan sentido, de la siguiente manera:
+
+```python
+def main(aceptar: bool = typer.Option(False, "--aceptar/--rechazar", "-f/-F")):
+```
+Tanto para la bandera de nombre largo, como para el nombre corto, se separa la opción positiva / negativa.
+
+Sí se quiere mostrar solamente la opción negativa en la ayuda, se puede declarar de la siguiente forma:
+
+```python
+def main(in_prod: bool = typer.Option(True, " /--dev", " /-d")):
+```
+Tenga en cuenta que hay un espacio en blanco antes del slash con la opción negativa " /--dev".
+
+### DateTime
+Se puede aceptar strings y se sean parseados como objetos datatime.
+
+```python
+from datetime import datetime
+import typer
+
+def main(birth: datetime):
+```
+De forma automática, Typer acepta los siguiente formatos:
+
+* %Y-%m-%d
+* %Y-%m-%dT%H:%M:%S
+* %Y-%m%d %H:%M:%S
+
+Pero se puede personalizar a cualquier otro formato que se quiera, pasandole la opción format de la siguiente forma:
+```python
+def main(
+    launch_date: datetime = typer.Argument(
+        ..., 
+        formats=["%m/%d/%Y"]
+    )
+):
+```
+Que en este caso, acepta el formato: Primero el mes, después el día y finalmente el año, separados por slash.
+
+### Lista para elegir: Enum - Choices
+Para poder desplegar opciones que se pueden elegir a partir de una lista de valores aceptados, se usa la clase estandar `enum.Enum`. 
+
+Para eso, creamos una clase que hereda de `Enum` con las opciones aceptados:
+
+```python
+from enum import Enum
+
+class RedesNeuronal(str, Enum):
+    full = "full"
+    conv = "conv"
+    lstm = "lstm"
+
+def main(
+    network: RedesNeuronal = typer.Option(RedesNeuronal.full,  
+                                          case_sensitive=False)
+    ):
+```
+Con la opción `case_sensitive` se puede especificar si se desactiva la sensibilidad a mayúsculas o minúsculas.
+
+### Rutas (Path)
+También es posible parsear rutas, con la ayuda de la libreria estandar `pathlib.Path`, se la siguiente forma:
+
+```python
+from pathlib import Path
+from typing import Optional
+
+def main(config: Optional[Path] = typer.Option(None)):
+```
+Como el objeto parseado es una instancia de `Path`, tiene todos su métodos para las validaciones y manipulaciones. Sin embargo, desde el parseo se pueden predefinir las validaciones.
+
+```python
+def main(
+    config: Optional[Path] = typer.Option(None,
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        writable=False,
+        readable=True,
+        resolve_path=True,)
+):
+```
+### Objetos Archivo
+Typer integra un tipo de dato que es un objeto de archivo (file-like object), similar al retornado al usar `with open("archivo.txt") as f`, f es ese tipo de objeto. Typer integra una clase especial según la tarea que se requiera realizar, por ejemplo:
+
+1. **Leer un archivo** (typer.FileText)
+```python
+def main(config: typer.FileText = typer.Option(...)):
+    for line in config:
+        print(f"Config line: {line}")
+```
+2. **Escribir sobre un archivo**
+```python
+def main(config: typer.FileTextWrite = typer.Option(...)):
+    config.write("Some config written by the app")
+```
+3. **Leer y escribir en un archivo binario**
+```python
+def main(file: typer.FileBinaryRead = typer.Option(...)):
+    pass
+
+def main(file: typer.FileBinaryWrite = typer.Option(...)):
+    pass
+```
+4. **Personalización del modo**
+```python
+# Abrimos el archivo para append nueva info al final del archivo
+def main(config: typer.FileText = typer.Option(..., mode="a")):
+    config.write("This is a single line\n")
+```
+
+### Multiples valores Opcionales de entrada 
+Puede declarar una opción CLI que se puede usar varias veces y luego obtener todos los valores.
+
+Para eso se usará la forma estandar List que esperará una lista de strings o enteros o flotantes:
+
+```python
+from typing import List, Optional
+
+def main(user: Optional[List[str]] = typer.Option(None)):
+```
+Como son parámetros opcionales, se pasarán al CLI de la siguiente forma:
+
+```console
+$ python main.py --user Camila --user Rick --user Morty
+```
+
+También se puede pasar en lugar de una lista, una tupla, especificando el número de elementos y el tipo de dato que tendrá la tupla.
+
+```python
+from typing import Tuple
+
+def main(user: Tuple[str, int, bool] = typer.Option((None, None, None))):
+```
+Pasandolo por el CLI de la siguiente forma:
+```console
+$ python main.py --user Camila 50 yes
+```
+
+### Multiples valores para argumentos
+La forma anterior fueron parámetros Opcionales. Ahora veremos como pasar Argumentos con multiples valores. También se hace uso del tipo `List`
+
+```python
+def main(files: List[Path]):
+```
+
+De la misma forma, puede aceptar una tupla, que especifique exactamente el número de argumentos y su tipo que se pasarán:
+
+```python
+def main(
+    names: Tuple[str, str, str] = typer.Argument(
+        ("Harry", "Hermione", "Ron"), 
+        help="Selecciona tres personajes de Harry Potter."
+    )
+):
+```
+### Abrir un archivo o lanzar una página o aplicación
+Puede iniciar aplicaciones desde su programa CLI con `typer.launch()`. Se iniciará la aplicación adecuada según la URL o el tipo de archivo que le pase:
+
+```python
+def lanzar():
+    """Lanza una bonita imagen"""
+    typer.launch("EhE0ruYWoAUY85U.jpeg")
+```
+Se puede agregar la opción `locate=True`, para que se abra un explorador de archivos justamente en el directorio donde se encuentra el archivo.
 
 ## Referencias
 * Documentación oficial de [Typer](https://typer.tiangolo.com/)
